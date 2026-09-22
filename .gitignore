@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python cache
+.pytest_cache/
+
+# Large/raw datasets
+data/DatafinitiElectronicsProductData.csv
+
+# Generated datasets
+data/tech_hunt_reviews.csv
+
+# Temporary files
+*.tmp
+*.log

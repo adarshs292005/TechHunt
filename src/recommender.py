@@ -1,196 +1,259 @@
+import pandas as pd
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+from src.nlp import clean_text
+from src.product_classifier import detect_product_type
 
 
 class RecommendationEngine:
 
-    def __init__(self, dataframe):
+    def __init__(self, csv_path):
 
-        self.df = dataframe.copy()
+        print("================================")
+        print("      TECH HUNT ENGINE")
+        print("================================")
 
-        # ==================================================
-        # PRODUCT INFORMATION
-        # ==================================================
+        # -----------------------------------------
+        # Load dataset
+        # -----------------------------------------
 
-        self.df["product_text"] = (
-            self.df["name"].fillna("") + " " +
-            self.df["brand"].fillna("") + " " +
-            self.df["primaryCategories"].fillna("")
+        print("Loading dataset...")
+
+        self.df = pd.read_csv(csv_path)
+
+        # -----------------------------------------
+        # Handle missing text
+        # -----------------------------------------
+
+        for column in [
+            "TITLE",
+            "BULLET_POINTS",
+            "DESCRIPTION"
+        ]:
+
+            if column in self.df.columns:
+
+                self.df[column] = (
+                    self.df[column]
+                    .fillna("")
+                    .astype(str)
+                )
+
+        # -----------------------------------------
+        # Convert PRODUCT_TYPE_ID
+        # -----------------------------------------
+
+        self.df["PRODUCT_TYPE_ID"] = pd.to_numeric(
+            self.df["PRODUCT_TYPE_ID"],
+            errors="coerce"
         )
 
-        # ==================================================
-        # REVIEW INFORMATION
-        # ==================================================
+        # -----------------------------------------
+        # Combine product information
+        # -----------------------------------------
 
-        self.df["review_text"] = (
-            self.df["clean_reviews"].fillna("")
+        self.df["PRODUCT_TEXT"] = (
+            self.df["TITLE"]
+            + " "
+            + self.df["BULLET_POINTS"]
+            + " "
+            + self.df["DESCRIPTION"]
         )
 
-        # ==================================================
-        # TF-IDF FOR PRODUCT INFORMATION
-        # ==================================================
+        # -----------------------------------------
+        # Clean text
+        # -----------------------------------------
 
-        self.product_vectorizer = TfidfVectorizer(
-            stop_words="english"
+        print("Cleaning product text...")
+
+        self.df["CLEAN_TEXT"] = (
+            self.df["PRODUCT_TEXT"]
+            .apply(clean_text)
         )
 
-        self.product_matrix = (
-            self.product_vectorizer.fit_transform(
-                self.df["product_text"]
+        # -----------------------------------------
+        # TF-IDF
+        # -----------------------------------------
+
+        print("Building TF-IDF model...")
+
+        self.vectorizer = TfidfVectorizer(
+            stop_words="english",
+            ngram_range=(1, 2),
+            min_df=1,
+            max_features=20000
+        )
+
+        self.tfidf_matrix = (
+            self.vectorizer.fit_transform(
+                self.df["CLEAN_TEXT"]
             )
         )
 
-        # ==================================================
-        # TF-IDF FOR REVIEWS
-        # ==================================================
-
-        self.review_vectorizer = TfidfVectorizer(
-            stop_words="english"
+        print(
+            "TF-IDF matrix:",
+            self.tfidf_matrix.shape
         )
 
-        self.review_matrix = (
-            self.review_vectorizer.fit_transform(
-                self.df["review_text"]
+        print(
+            "Products loaded:",
+            len(self.df)
+        )
+
+        print("================================")
+
+    # =================================================
+    # PRODUCT TYPE MATCH
+    # =================================================
+
+    def product_type_match(
+        self,
+        title,
+        product_type
+    ):
+
+        # No product type detected
+        if product_type is None:
+            return 0
+
+        title = str(title)
+
+        detected_type = detect_product_type(
+            title
+        )
+
+        if detected_type == product_type:
+            return 1
+
+        return 0
+
+    # =================================================
+    # RECOMMEND
+    # =================================================
+
+    def recommend(
+        self,
+        query,
+        top_n=5
+    ):
+
+        query = query.strip()
+
+        # -----------------------------------------
+        # Empty query
+        # -----------------------------------------
+
+        if not query:
+
+            results = self.df.head(
+                top_n
+            ).copy()
+
+            results["similarity"] = 0.0
+
+            results["type_match"] = 0.0
+
+            results["final_score"] = 0.0
+
+            return results
+
+        # -----------------------------------------
+        # Detect product type
+        # -----------------------------------------
+
+        product_type = detect_product_type(
+            query
+        )
+
+        print(
+            f"\nQuery: {query}"
+        )
+
+        print(
+            f"Detected product type: "
+            f"{product_type}"
+        )
+
+        # -----------------------------------------
+        # Clean query
+        # -----------------------------------------
+
+        cleaned_query = clean_text(
+            query
+        )
+
+        # -----------------------------------------
+        # Convert query to TF-IDF
+        # -----------------------------------------
+
+        query_vector = (
+            self.vectorizer.transform(
+                [cleaned_query]
             )
         )
 
-    # ==================================================
-    # RECOMMENDATION
-    # ==================================================
+        # -----------------------------------------
+        # Cosine similarity
+        # -----------------------------------------
 
-    def recommend(self, query, top_n=5):
-
-        query = query.lower().strip()
-
-        # ==================================================
-        # PRODUCT SIMILARITY
-        # ==================================================
-
-        query_product_vector = (
-            self.product_vectorizer.transform(
-                [query]
-            )
+        similarity_scores = (
+            cosine_similarity(
+                query_vector,
+                self.tfidf_matrix
+            ).flatten()
         )
 
-        product_similarity = cosine_similarity(
-            query_product_vector,
-            self.product_matrix
-        ).flatten()
-
-        # ==================================================
-        # REVIEW SIMILARITY
-        # ==================================================
-
-        query_review_vector = (
-            self.review_vectorizer.transform(
-                [query]
-            )
-        )
-
-        review_similarity = cosine_similarity(
-            query_review_vector,
-            self.review_matrix
-        ).flatten()
+        # -----------------------------------------
+        # Create result dataframe
+        # -----------------------------------------
 
         results = self.df.copy()
 
-        results["product_similarity"] = (
-            product_similarity
-        )
-
-        results["review_similarity"] = (
-            review_similarity
-        )
-
-        # ==================================================
-        # KEYWORD MATCHING
-        # ==================================================
-
-        query_words = [
-            word
-            for word in query.split()
-            if len(word) > 2
-        ]
-
-        keyword_scores = []
-
-        for _, row in results.iterrows():
-
-            product_text = (
-                str(row["name"]) + " " +
-                str(row["brand"]) + " " +
-                str(row["primaryCategories"])
-            ).lower()
-
-            matches = 0
-
-            for word in query_words:
-
-                if word in product_text:
-                    matches += 1
-
-            if len(query_words) > 0:
-
-                keyword_score = (
-                    matches / len(query_words)
-                )
-
-            else:
-
-                keyword_score = 0
-
-            keyword_scores.append(
-                keyword_score
-            )
-
-        results["keyword_score"] = (
-            keyword_scores
-        )
-
-        # ==================================================
-        # RATING SCORE
-        # ==================================================
-
-        rating_score = (
-            results["average_rating"] / 5
-        )
-
-        # ==================================================
-        # FINAL RECOMMENDATION SCORE
-        # ==================================================
-
-        results["match_score"] = (
-            results["product_similarity"] * 55
-            +
-            results["keyword_score"] * 25
-            +
-            results["review_similarity"] * 10
-            +
-            rating_score * 10
-        )
-
-        # ==================================================
-        # COMPATIBILITY WITH APP.PY
-        # ==================================================
-
-        # app.py expects a column called "similarity".
-        # We use product similarity as the main similarity value.
-
         results["similarity"] = (
-            results["product_similarity"]
+            similarity_scores
         )
 
-        # ==================================================
-        # SORT RESULTS
-        # ==================================================
+        # -----------------------------------------
+        # Product type matching
+        # -----------------------------------------
 
-        results = results.sort_values(
-            "match_score",
-            ascending=False
+        results["type_match"] = results[
+            "TITLE"
+        ].apply(
+            lambda title:
+            self.product_type_match(
+                title,
+                product_type
+            )
         )
 
-        # ==================================================
-        # RETURN TOP PRODUCTS
-        # ==================================================
+        # -----------------------------------------
+        # Hybrid recommendation score
+        #
+        # 70% text similarity
+        # 30% product type match
+        # -----------------------------------------
 
-        return results.head(top_n)
+        results["final_score"] = (
+            results["similarity"] * 0.70
+            +
+            results["type_match"] * 0.30
+        )
+
+        # -----------------------------------------
+        # Sort by final recommendation score
+        # -----------------------------------------
+
+        results = (
+            results
+            .sort_values(
+                by="final_score",
+                ascending=False
+            )
+            .head(top_n)
+            .reset_index(drop=True)
+        )
+
+        return results

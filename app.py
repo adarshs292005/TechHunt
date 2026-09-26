@@ -1,75 +1,49 @@
+import re
+
 import pandas as pd
 import streamlit as st
-import plotly.express as px
 
 from src.recommender import RecommendationEngine
+from src.product_classifier import detect_product_type
 
 
-# ==================================================
+# =========================================================
 # PAGE CONFIGURATION
-# ==================================================
+# =========================================================
 
 st.set_page_config(
     page_title="Tech Hunt",
     page_icon="🔎",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 
-# ==================================================
+# =========================================================
 # CUSTOM CSS
-# ==================================================
+# =========================================================
 
 st.markdown(
     """
     <style>
 
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-        max-width: 1200px;
+    .main-title {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 0;
+    }
+
+    .subtitle {
+        font-size: 1.15rem;
+        color: #777;
+        margin-bottom: 2rem;
     }
 
     .product-card {
-        padding: 22px;
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        border-radius: 14px;
-        margin-bottom: 18px;
-        background-color: rgba(128, 128, 128, 0.05);
-    }
-
-    .product-title {
-        font-size: 22px;
-        font-weight: 700;
-        margin-bottom: 8px;
-    }
-
-    .product-brand {
-        font-size: 15px;
-        opacity: 0.8;
-        margin-bottom: 12px;
-    }
-
-    .product-info {
-        font-size: 15px;
-        margin-top: 6px;
-    }
-
-    .score-box {
-        text-align: center;
-        padding: 12px;
+        padding: 1.2rem;
         border-radius: 12px;
-        background-color: rgba(128, 128, 128, 0.08);
-    }
-
-    .score-number {
-        font-size: 28px;
-        font-weight: 700;
-    }
-
-    .score-label {
-        font-size: 13px;
-        opacity: 0.75;
+        border: 1px solid #ddd;
+        margin-bottom: 1rem;
     }
 
     </style>
@@ -78,317 +52,427 @@ st.markdown(
 )
 
 
-# ==================================================
-# LOAD DATA
-# ==================================================
+# =========================================================
+# CLEAN PRODUCT TITLE
+# =========================================================
 
-@st.cache_data
-def load_data():
+def clean_product_title(title):
 
-    return pd.read_csv(
-        "data/final_products.csv"
+    title = str(title)
+
+    # Remove "(Renewed)"
+    title = re.sub(
+        r"\(\s*renewed\s*\)",
+        "",
+        title,
+        flags=re.IGNORECASE
     )
 
+    # Remove standalone "Renewed"
+    title = re.sub(
+        r"\brenewed\b",
+        "",
+        title,
+        flags=re.IGNORECASE
+    )
 
-df = load_data()
+    # Remove duplicate spaces
+    title = re.sub(
+        r"\s+",
+        " ",
+        title
+    ).strip()
+
+    return title
 
 
-# ==================================================
-# CREATE RECOMMENDATION ENGINE
-# ==================================================
+# =========================================================
+# LOAD RECOMMENDATION ENGINE
+# =========================================================
 
 @st.cache_resource
-def create_engine(dataframe):
+def load_engine():
 
-    return RecommendationEngine(dataframe)
-
-
-engine = create_engine(df)
-
-
-# ==================================================
-# HEADER
-# ==================================================
-
-st.title("🔎 Tech Hunt")
-
-st.markdown(
-    """
-    ### NLP + Big Data Analytics Based Technology Product Recommendation System
-
-    Find technology products using **natural-language search**,
-    review analysis and **TF-IDF based recommendation**.
-    """
-)
-
-
-# ==================================================
-# SEARCH SECTION
-# ==================================================
-
-st.subheader("🔍 Find Your Product")
-
-query = st.text_input(
-    "Describe what you are looking for",
-    placeholder="Example: wireless bluetooth speaker"
-)
-
-
-# ==================================================
-# RECOMMENDATIONS
-# ==================================================
-
-if query:
-
-    results = engine.recommend(
-        query,
-        top_n=5
+    return RecommendationEngine(
+        "data/tech_products.csv"
     )
 
-    st.subheader("🎯 Recommended Products")
 
-    for _, product in results.iterrows():
-
-        st.markdown(
-            '<div class="product-card">',
-            unsafe_allow_html=True
-        )
-
-        col1, col2 = st.columns(
-            [4, 1]
-        )
-
-        # ------------------------------------------
-        # PRODUCT INFORMATION
-        # ------------------------------------------
-
-        with col1:
-
-            st.markdown(
-                f"""
-                <div class="product-title">
-                    {product['name']}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                f"""
-                <div class="product-brand">
-                    🏷️ {product['brand']}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                f"""
-                <div class="product-info">
-                    📂 <b>Category:</b>
-                    {product['primaryCategories']}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                f"""
-                <div class="product-info">
-                    ⭐ <b>Average Rating:</b>
-                    {product['average_rating']}/5
-                    &nbsp;&nbsp;&nbsp;
-                    📝 <b>Reviews:</b>
-                    {int(product['review_count'])}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                f"""
-                <div class="product-info">
-                    😊 <b>Review Sentiment:</b>
-                    {product['sentiment']}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        # ------------------------------------------
-        # RECOMMENDATION SCORE
-        # ------------------------------------------
-
-        with col2:
-
-            st.markdown(
-                '<div class="score-box">',
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                f"""
-                <div class="score-number">
-                    {product['match_score']:.1f}
-                </div>
-
-                <div class="score-label">
-                    Recommendation Score
-                </div>
-
-                <br>
-
-                <div class="score-label">
-                    Text Similarity
-                </div>
-
-                <div style="font-size:20px;font-weight:600;">
-                    {product['similarity']:.2f}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                '</div>',
-                unsafe_allow_html=True
-            )
-
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
+engine = load_engine()
 
 
-# ==================================================
-# ANALYTICS DASHBOARD
-# ==================================================
+# =========================================================
+# SIDEBAR
+# =========================================================
 
-st.divider()
+with st.sidebar:
 
-st.header("📊 Product Analytics")
+    st.title("🔎 Tech Hunt")
+
+    st.write(
+        "AI-powered technology product "
+        "recommendation system."
+    )
+
+    st.divider()
+
+    st.subheader("How it works")
+
+    st.write(
+        """
+        **1. Natural Language Query**
+
+        Describe the product you need.
+
+        **2. Product Detection**
+
+        The system identifies the product category.
+
+        **3. NLP Processing**
+
+        TF-IDF converts product text into numerical vectors.
+
+        **4. Similarity Matching**
+
+        Cosine similarity compares your query
+        with available products.
+
+        **5. Hybrid Ranking**
+
+        The final recommendation score combines
+        text similarity and product-type matching.
+        """
+    )
+
+    st.divider()
+
+    st.subheader("Technology")
+
+    st.write(
+        """
+        - Python
+        - Streamlit
+        - Pandas
+        - Scikit-learn
+        - TF-IDF
+        - Cosine Similarity
+        - PySpark
+        """
+    )
+
+    st.divider()
+
+    st.caption(
+        "Tech Hunt • NLP + Big Data Analytics"
+    )
 
 
-# ==================================================
-# SUMMARY METRICS
-# ==================================================
+# =========================================================
+# HEADER
+# =========================================================
 
-col1, col2, col3 = st.columns(3)
+st.markdown(
+    '<div class="main-title">🔎 Tech Hunt</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'Find technology products using natural language.'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# =========================================================
+# SEARCH INPUT
+# =========================================================
+
+query = st.text_input(
+    "What are you looking for?",
+    placeholder=(
+        "Example: bluetooth speaker for home"
+    )
+)
+
+
+# =========================================================
+# SEARCH CONTROLS
+# =========================================================
+
+col1, col2 = st.columns([3, 1])
+
 
 with col1:
 
-    st.metric(
-        "Total Products",
-        len(df)
+    top_n = st.slider(
+        "Number of recommendations",
+        min_value=3,
+        max_value=10,
+        value=5
     )
+
 
 with col2:
 
-    st.metric(
-        "Total Reviews",
-        int(df["review_count"].sum())
-    )
+    st.write("")
 
-with col3:
-
-    st.metric(
-        "Average Rating",
-        f"{df['average_rating'].mean():.2f}/5"
+    search_button = st.button(
+        "🔍 Search",
+        use_container_width=True
     )
 
 
-# ==================================================
-# RATING DISTRIBUTION
-# ==================================================
+# =========================================================
+# SEARCH
+# =========================================================
 
-st.subheader("⭐ Product Rating Distribution")
+if search_button:
 
-rating_counts = (
-    df["average_rating"]
-    .round(1)
-    .value_counts()
-    .sort_index()
-    .reset_index()
-)
+    if not query.strip():
 
-rating_counts.columns = [
-    "Rating",
-    "Products"
-]
+        st.warning(
+            "Please enter what you are looking for."
+        )
 
-fig_rating = px.bar(
-    rating_counts,
-    x="Rating",
-    y="Products",
-    title="Distribution of Average Product Ratings"
-)
+    else:
 
-st.plotly_chart(
-    fig_rating,
-    use_container_width=True
-)
+        # ---------------------------------------------
+        # Run recommendation engine
+        # ---------------------------------------------
+
+        with st.spinner(
+            "Analyzing your requirements..."
+        ):
+
+            results = engine.recommend(
+                query,
+                top_n=top_n
+            )
+
+        # ---------------------------------------------
+        # Detect category
+        # ---------------------------------------------
+
+        detected_type = detect_product_type(
+            query
+        )
+
+        # ---------------------------------------------
+        # Results heading
+        # ---------------------------------------------
+
+        st.divider()
+
+        st.subheader(
+            "🎯 Recommendations"
+        )
+
+        if detected_type:
+
+            formatted_type = (
+                detected_type
+                .replace("_", " ")
+                .title()
+            )
+
+            st.info(
+                f"Detected product category: "
+                f"**{formatted_type}**"
+            )
+
+        else:
+
+            st.info(
+                "No specific product category detected. "
+                "Results are based on text similarity."
+            )
+
+        # ---------------------------------------------
+        # No results
+        # ---------------------------------------------
+
+        if results.empty:
+
+            st.warning(
+                "No matching products were found."
+            )
+
+        # ---------------------------------------------
+        # Display recommendations
+        # ---------------------------------------------
+
+        for index, row in results.iterrows():
+
+            # =========================================
+            # PRODUCT TITLE
+            # =========================================
+
+            display_title = clean_product_title(
+                row["TITLE"]
+            )
+
+            st.markdown(
+                f"""
+                <div class="product-card">
+
+                <h3>
+                {index + 1}. {display_title}
+                </h3>
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # =========================================
+            # MATCH SCORE
+            # =========================================
+
+            if "final_score" in results.columns:
+
+                match_score = float(
+                    row["final_score"]
+                )
+
+            else:
+
+                match_score = float(
+                    row["similarity"]
+                )
+
+            # =========================================
+            # PRODUCT TYPE
+            # =========================================
+
+            product_type_id = (
+                row["PRODUCT_TYPE_ID"]
+            )
+
+            if pd.isna(product_type_id):
+
+                product_type_text = "Unknown"
+
+            else:
+
+                product_type_text = str(
+                    int(product_type_id)
+                )
+
+            # =========================================
+            # METRICS
+            # =========================================
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.metric(
+                    "Match Score",
+                    f"{match_score:.1%}"
+                )
+
+            with col2:
+
+                st.metric(
+                    "Product Type",
+                    product_type_text
+                )
+
+            # =========================================
+            # PRODUCT DESCRIPTION
+            # =========================================
+
+            description = str(
+                row["DESCRIPTION"]
+            ).strip()
+
+            bullet_points = str(
+                row["BULLET_POINTS"]
+            ).strip()
+
+            if description:
+
+                with st.expander(
+                    "📄 View product description"
+                ):
+
+                    st.write(
+                        description
+                    )
+
+            elif bullet_points:
+
+                with st.expander(
+                    "📄 View product details"
+                ):
+
+                    st.write(
+                        bullet_points
+                    )
+
+            else:
+
+                st.caption(
+                    "No additional product information available."
+                )
+
+            st.divider()
 
 
-# ==================================================
-# REVIEW COUNT
-# ==================================================
+# =========================================================
+# LANDING PAGE
+# =========================================================
 
-st.subheader("📝 Products by Review Count")
+else:
 
-review_data = (
-    df[
-        [
-            "name",
-            "review_count"
-        ]
-    ]
-    .sort_values(
-        "review_count",
-        ascending=False
+    st.divider()
+
+    st.subheader(
+        "💡 Try searching for"
     )
-    .head(10)
-)
 
-fig_reviews = px.bar(
-    review_data,
-    x="review_count",
-    y="name",
-    orientation="h",
-    title="Top 10 Products by Number of Reviews"
-)
+    example_col1, example_col2, example_col3 = (
+        st.columns(3)
+    )
 
-st.plotly_chart(
-    fig_reviews,
-    use_container_width=True
-)
+    with example_col1:
+
+        st.info(
+            """
+            💻 **Laptop**
+
+            `laptop computer`
+            """
+        )
+
+    with example_col2:
+
+        st.info(
+            """
+            🔊 **Speaker**
+
+            `bluetooth speaker`
+            """
+        )
+
+    with example_col3:
+
+        st.info(
+            """
+            🎧 **Headphones**
+
+            `wireless headphones`
+            """
+        )
 
 
-# ==================================================
-# RATING VS REVIEW COUNT
-# ==================================================
-
-st.subheader("📈 Rating vs Review Count")
-
-fig_scatter = px.scatter(
-    df,
-    x="review_count",
-    y="average_rating",
-    hover_name="name",
-    title="Relationship Between Reviews and Average Rating"
-)
-
-st.plotly_chart(
-    fig_scatter,
-    use_container_width=True
-)
-
-
-# ==================================================
+# =========================================================
 # FOOTER
-# ==================================================
+# =========================================================
 
 st.divider()
 
 st.caption(
-    "Tech Hunt | NLP + Big Data Analytics Project"
+    "Tech Hunt — NLP & Big Data Analytics Project"
 )

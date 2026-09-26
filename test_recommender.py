@@ -1,24 +1,42 @@
-import pandas as pd
 from src.recommender import RecommendationEngine
 
-df = pd.read_csv("data/final_products.csv")
+DATASET = "data/tech_products.csv"
 
-engine = RecommendationEngine(df)
+print("==============================")
+print("       TECH HUNT")
+print("==============================")
 
-query = "laptop for programming with good battery"
+engine = RecommendationEngine(DATASET)
 
-results = engine.recommend(query, top_n=5)
+while True:
 
-print(
-    results[
-        [
-            "name",
-            "brand",
-            "average_rating",
-            "review_count",
-            "sentiment",
-            "similarity",
-            "match_score"
-        ]
-    ].to_string(index=False)
-)
+    query = input(
+        "\nEnter your search "
+        "(or type 'exit'): "
+    )
+
+    if query.lower() == "exit":
+        break
+
+    results = engine.recommend(
+        query,
+        top_n=5
+    )
+
+    print("\n==============================")
+    print("       RECOMMENDATIONS")
+    print("==============================")
+
+    for index, row in results.iterrows():
+
+        print(
+            f"\n{index + 1}. "
+            f"{row['TITLE']}"
+        )
+
+        print(
+            f"Similarity: "
+            f"{row['similarity']:.2%}"
+        )
+
+    print("\n==============================")
